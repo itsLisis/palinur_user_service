@@ -8,3 +8,5 @@ pydantic-settings
 httpx
 python-multipart
 psycopg2
+pytest
+pytest-cov
