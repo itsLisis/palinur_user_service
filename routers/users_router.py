@@ -12,10 +12,12 @@ def get_orientations_interests(db: Session = Depends(get_db)):
     
     orientations = db.query(models.SexualOrientation).all()
     interests = db.query(models.Interest).all()
+    genders = db.query(models.Gender).all()
 
     return {
         "sexual_orientations": orientations,
-        "interests": interests
+        "interests": interests,
+        "genders": genders
     }
 
 @router.post("/complete_profile")
@@ -37,7 +39,8 @@ def create_profile(
         username=profile_data.username,
         birthday=profile_data.birthday,
         introduction=profile_data.introduction,
-        sexual_orientation_id=profile_data.sexual_orientation_id
+        sexual_orientation_id=profile_data.sexual_orientation_id,
+        gender_id=profile_data.gender_id
     )
     
     db.add(new_profile)
@@ -84,6 +87,7 @@ def list_all_profiles(db: Session = Depends(get_db)):
             "username": profile.username,
             "age": age,
             "sexual_orientation_id": profile.sexual_orientation_id,
+            "gender_id": profile.gender_id,
             "interests": [interest.interest_name for interest in profile.interests],
             "images": [image.image_url for image in profile.images]
         }
