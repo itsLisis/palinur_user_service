@@ -6,7 +6,6 @@ pydantic
 pydantic[email]
 pydantic-settings
 httpx
-python-multipart
 psycopg2-binary
 pytest
 pytest-cov

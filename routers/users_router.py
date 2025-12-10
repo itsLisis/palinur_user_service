@@ -10,12 +10,50 @@ router = APIRouter(prefix="/user", tags=["User"])
 @router.get("/complete_profile", response_model=schemas.MergeInfo)
 def get_orientations_interests(db: Session = Depends(get_db)):
     
+    genders = db.query(models.Gender).all()
     orientations = db.query(models.SexualOrientation).all()
     interests = db.query(models.Interest).all()
 
     return {
+        "genders": genders,
         "sexual_orientations": orientations,
         "interests": interests
+    }
+
+@router.get("/profile", response_model=schemas.OwnProfileResponse)
+def get_own_profile(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get the profile of the authenticated user."""
+    profile = db.query(models.Profile).filter(models.Profile.id == user_id).first()
+    
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile not found"
+        )
+    
+    # Calculate age
+    today = date.today()
+    age = today.year - profile.birthday.year - ((today.month, today.day) < (profile.birthday.month, profile.birthday.day))
+    
+    # Get interests
+    interests = [interest.interest_name for interest in profile.interests]
+    
+    # Get images
+    images = [image.image_url for image in profile.images]
+    
+    return {
+        "id": profile.id,
+        "username": profile.username,
+        "introduction": profile.introduction,
+        "age": age,
+        "birthday": profile.birthday,
+        "gender_id": profile.gender_id,
+        "sexual_orientation_id": profile.sexual_orientation_id,
+        "interests": interests,
+        "images": images
     }
 
 @router.post("/complete_profile")
@@ -37,6 +75,7 @@ def create_profile(
         username=profile_data.username,
         birthday=profile_data.birthday,
         introduction=profile_data.introduction,
+        gender_id=profile_data.gender_id,
         sexual_orientation_id=profile_data.sexual_orientation_id
     )
     
@@ -175,4 +214,3 @@ def list_users_for_female_bi(db: Session = Depends(get_db)):
         models.Profile.sexual_orientation_id.in_([0, 1, 2, 4])
     ).all()
     return [profile.id for profile in candidates]
-

@@ -7,6 +7,7 @@ class ProfileCreate(BaseModel):
     username: str
     introduction: str
     birthday: date
+    gender_id: int
     sexual_orientation_id: int
     interest_ids: List[int] = []
     image_urls: List[str] = []
@@ -34,6 +35,7 @@ class ProfileUpdate(BaseModel):
     username: str | None = None
     introduction: str | None = None
     birthday: date | None = None
+    gender_id: int | None = None
     sexual_orientation_id: int | None = None
     interest_ids: List[int] | None = None
 
@@ -44,6 +46,7 @@ class OwnProfileResponse(BaseModel):
     introduction: str
     age: int
     birthday: date
+    gender_id: int
     sexual_orientation_id: int
     interests: List[str] = []
     images: List[str] = []
@@ -57,6 +60,7 @@ class PublicProfileResponse(BaseModel):
     username: str
     introduction: str
     age: int
+    gender_id: int
     sexual_orientation_id: int
     interests: List[str] = []
     images: List[str] = []
@@ -78,6 +82,14 @@ class InterestResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class GenderResponse(BaseModel):
+    id: int
+    gender_name: str
+    
+    class Config:
+        from_attributes = True
+
 class MergeInfo(BaseModel):
+    genders: List[GenderResponse]
     sexual_orientations: List[SexualOrientationResponse]
     interests: List[InterestResponse]

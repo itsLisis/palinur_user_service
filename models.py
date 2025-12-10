@@ -12,6 +12,10 @@ class Profile(Base):
     birthday = Column(Date, nullable=False)
     introduction = Column(String, nullable=False)
 
+    # Gender
+    gender_id = Column(Integer, ForeignKey("genders.id"), nullable=False)
+    gender = relationship("Gender", back_populates="profiles")
+
     # Sexual orientation
     sexual_orientation_id = Column(Integer, ForeignKey("sexual_orientations.id"), nullable=False)
     sexual_orientation = relationship("SexualOrientation", back_populates="profiles")
@@ -58,3 +62,12 @@ class SexualOrientation(Base):
     orientation_name = Column(String, nullable=False, unique=True)
 
     profiles = relationship("Profile", back_populates="sexual_orientation")
+
+
+class Gender(Base):
+    __tablename__ = "genders"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    gender_name = Column(String, nullable=False, unique=True)
+
+    profiles = relationship("Profile", back_populates="gender")
