@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from datetime import date
+from typing import List
 
 from db import get_db
 import models, schemas
+from cloudinary_config import upload_image
 
 router = APIRouter(prefix="/user", tags=["User"])
 
@@ -43,6 +45,7 @@ def get_own_profile(
     
     # Get images
     images = [image.image_url for image in profile.images]
+    image_ids = [image.id for image in profile.images]
     
     return {
         "id": profile.id,
@@ -53,8 +56,102 @@ def get_own_profile(
         "gender_id": profile.gender_id,
         "sexual_orientation_id": profile.sexual_orientation_id,
         "interests": interests,
-        "images": images
+        "images": images,
+        "image_ids": image_ids
     }
+
+@router.post("/profile/upload-image")
+async def upload_profile_image(
+    user_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Upload a profile image to Cloudinary."""
+    # Verify profile exists
+    profile = db.query(models.Profile).filter(models.Profile.id == user_id).first()
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile not found"
+        )
+    
+    # Check current image count
+    current_images = db.query(models.ProfileImage).filter(
+        models.ProfileImage.profile_id == user_id
+    ).count()
+    
+    if current_images >= 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 6 images allowed"
+        )
+    
+    # Validate file type
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be an image"
+        )
+    
+    # Validate file size (5MB max)
+    file_content = await file.read()
+    if len(file_content) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image size must be less than 5MB"
+        )
+    
+    try:
+        # Upload to Cloudinary
+        image_url = upload_image(file_content, folder=f"profiles/{user_id}")
+        
+        # Save to database
+        is_primary = current_images == 0
+        profile_image = models.ProfileImage(
+            profile_id=user_id,
+            image_url=image_url,
+            is_primary=is_primary
+        )
+        db.add(profile_image)
+        db.commit()
+        db.refresh(profile_image)
+        
+        return {
+            "message": "Image uploaded successfully",
+            "image_id": profile_image.id,
+            "image_url": image_url,
+            "is_primary": is_primary
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload image: {str(e)}"
+        )
+
+@router.delete("/profile/image/{image_id}")
+def delete_profile_image(
+    image_id: int,
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """Delete a profile image."""
+    # Find the image
+    image = db.query(models.ProfileImage).filter(
+        models.ProfileImage.id == image_id,
+        models.ProfileImage.profile_id == user_id
+    ).first()
+    
+    if not image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image not found"
+        )
+    
+    # Delete from database (Cloudinary deletion is optional)
+    db.delete(image)
+    db.commit()
+    
+    return {"message": "Image deleted successfully"}
 
 @router.post("/complete_profile")
 def create_profile(

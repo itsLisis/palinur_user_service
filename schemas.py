@@ -50,6 +50,7 @@ class OwnProfileResponse(BaseModel):
     sexual_orientation_id: int
     interests: List[str] = []
     images: List[str] = []
+    image_ids: List[int] = []
     
     class Config:
         from_attributes = True
