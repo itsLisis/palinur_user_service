@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import date
 from typing import List
 
@@ -28,7 +28,18 @@ def get_own_profile(
     db: Session = Depends(get_db)
 ):
     """Get the profile of the authenticated user."""
-    profile = db.query(models.Profile).filter(models.Profile.id == user_id).first()
+    # Avoid N+1 on gender/orientation/interests/images
+    profile = (
+        db.query(models.Profile)
+        .options(
+            joinedload(models.Profile.gender),
+            joinedload(models.Profile.sexual_orientation),
+            joinedload(models.Profile.interests),
+            joinedload(models.Profile.images),
+        )
+        .filter(models.Profile.id == user_id)
+        .first()
+    )
     
     if not profile:
         raise HTTPException(
@@ -54,11 +65,51 @@ def get_own_profile(
         "age": age,
         "birthday": profile.birthday,
         "gender_id": profile.gender_id,
+        "gender": profile.gender.gender_name if profile.gender else None,
         "sexual_orientation_id": profile.sexual_orientation_id,
+        "sexual_orientation": profile.sexual_orientation.orientation_name if profile.sexual_orientation else None,
         "interests": interests,
         "images": images,
         "image_ids": image_ids
     }
+
+
+@router.patch("/profile")
+def update_profile(
+    user_id: int,
+    profile_data: schemas.ProfileUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Update profile fields for an existing profile.
+    Used for editing introduction and interests from the profile tab.
+    """
+    profile = db.query(models.Profile).filter(models.Profile.id == user_id).first()
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+
+    # Update scalar fields
+    if profile_data.username is not None:
+        profile.username = profile_data.username
+    if profile_data.introduction is not None:
+        profile.introduction = profile_data.introduction
+    if profile_data.birthday is not None:
+        profile.birthday = profile_data.birthday
+    if profile_data.gender_id is not None:
+        profile.gender_id = profile_data.gender_id
+    if profile_data.sexual_orientation_id is not None:
+        profile.sexual_orientation_id = profile_data.sexual_orientation_id
+
+    # Update interests (replace all)
+    if profile_data.interest_ids is not None:
+        db.query(models.UserInterest).filter(models.UserInterest.profile_id == user_id).delete(
+            synchronize_session=False
+        )
+        for interest_id in profile_data.interest_ids:
+            db.add(models.UserInterest(profile_id=user_id, interest_id=interest_id))
+
+    db.commit()
+    return {"success": True, "user_id": user_id}
 
 @router.post("/profile/upload-image")
 async def upload_profile_image(
@@ -208,8 +259,18 @@ def create_profile(
 
 @router.get("/profiles")
 def list_all_profiles(db: Session = Depends(get_db)):
-    """Return all user profiles as a list of profile dicts with id, username, sexual_orientation_id, interests, and images."""
-    profiles = db.query(models.Profile).all()
+    """Return all user profiles with gender and sexual_orientation as text for matching."""
+    # Avoid N+1 queries (gender/orientation/interests/images)
+    profiles = (
+        db.query(models.Profile)
+        .options(
+            joinedload(models.Profile.gender),
+            joinedload(models.Profile.sexual_orientation),
+            joinedload(models.Profile.interests),
+            joinedload(models.Profile.images),
+        )
+        .all()
+    )
     result = []
     for profile in profiles:
         today = date.today()
@@ -219,12 +280,42 @@ def list_all_profiles(db: Session = Depends(get_db)):
             "id": profile.id,
             "username": profile.username,
             "age": age,
+            "introduction": profile.introduction,
+            "gender": profile.gender.gender_name if profile.gender else None,
+            "sexual_orientation": profile.sexual_orientation.orientation_name if profile.sexual_orientation else None,
             "sexual_orientation_id": profile.sexual_orientation_id,
             "interests": [interest.interest_name for interest in profile.interests],
             "images": [image.image_url for image in profile.images]
         }
         result.append(profile_dict)
     return result
+
+
+@router.delete("/profile")
+def delete_profile(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Delete the user's profile and related data (images, interests).
+    NOTE: Cloudinary asset deletion is not handled here; only DB records.
+    """
+    profile = db.query(models.Profile).filter(models.Profile.id == user_id).first()
+    if not profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+
+    # Remove join-table interests explicitly
+    db.query(models.UserInterest).filter(models.UserInterest.profile_id == user_id).delete(
+        synchronize_session=False
+    )
+    # Images are delete-orphan on relationship, but ensure DB cleanup
+    db.query(models.ProfileImage).filter(models.ProfileImage.profile_id == user_id).delete(
+        synchronize_session=False
+    )
+
+    db.delete(profile)
+    db.commit()
+    return {"success": True, "user_id": user_id}
 
 
 @router.get("/{user_id}/interests")
