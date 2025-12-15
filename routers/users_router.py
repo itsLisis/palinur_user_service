@@ -281,6 +281,7 @@ def list_all_profiles(db: Session = Depends(get_db)):
             "username": profile.username,
             "age": age,
             "introduction": profile.introduction,
+            "gender_id": profile.gender_id,
             "gender": profile.gender.gender_name if profile.gender else None,
             "sexual_orientation": profile.sexual_orientation.orientation_name if profile.sexual_orientation else None,
             "sexual_orientation_id": profile.sexual_orientation_id,
